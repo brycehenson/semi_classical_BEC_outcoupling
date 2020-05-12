@@ -1,0 +1,17 @@
+# Windows default autosave extension
+*.asv
+# Data files
+*.mat
+# dropbox
+*.dropbox
+# windows files
+*.ini
+# windows thumb
+*.db
+# Sandboxing
+/scratch
+# mac filesystem stuff
+.DS_Store
+#large files
+.fig
+.tiff
