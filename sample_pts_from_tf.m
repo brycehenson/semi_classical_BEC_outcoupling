@@ -1,4 +1,4 @@
-function pts=sample_pts_from_tf(n_sample,tf_details)
+function pts=sample_pts_from_tf(n_sample,tf_details,den_power)
 % sample some points from a 3d tf distribution using rejection sampling
 % there are better ways to do sampling from a distribution but this is the easiest to implement
 
@@ -7,8 +7,16 @@ function pts=sample_pts_from_tf(n_sample,tf_details)
 max_chunk_size=3e6;
 verbose=0;
 
-expected_sucess_rate=0.208; % this is independent of the trap freqs
 
+
+if nargin<3
+    den_power=1;
+end
+
+% its handy to have an estimate of the expected sucess rate
+% this is independent of the trap freqs
+% but i dont think the den power scaling is right but its not important
+expected_sucess_rate=0.208/den_power; 
 
 pts=nan(n_sample,3);
 pts_done=0;
@@ -16,6 +24,8 @@ pts_remaining=n_sample;
 
 pad_factor=1.001; % pad some variables to make sure the edges are covered
 cut_extra=true; %remove extra points from the bootstrap so that output is excatly n_sample long
+
+pob_amp_peak=(tf_details.density_peak^den_power)*pad_factor;
 
 while pts_remaining>0
     % set a chunk size, this will give the right number of sucess. sample pts on average
@@ -30,10 +40,11 @@ while pts_remaining>0
     pos_sample=pos_sample.*repmat(tf_details.tf_radi',[chunk_size,1])*pad_factor;
     % find what the tf density is at these locations
     density=tf_density_distribution(pos_sample,tf_details);
+    prob_amp_samp=density.^den_power;
     % to do rejection sampling we generate another random number between 0 and the peak density
-    amplitude_rand=rand(chunk_size,1)*tf_details.density_peak*pad_factor;
+    amplitude_rand=rand(chunk_size,1)*pob_amp_peak;
     % the sampled point is kept if the sample is less than the density
-    mask=amplitude_rand<density;
+    mask=amplitude_rand<prob_amp_samp;
     pts_tmp=pos_sample(mask,:);
     npts_chunk=size(pts_tmp,1);
     if npts_chunk>0

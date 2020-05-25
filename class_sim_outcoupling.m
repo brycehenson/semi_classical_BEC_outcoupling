@@ -20,7 +20,7 @@ if ~isfield(opt,'verbose')
     opt.verbose=0;
 end
 
-chunk_size=200;
+chunk_size=100;
 
 
 % (1/2) m v^2= 1/2 m omega^2 x^2
@@ -29,35 +29,57 @@ if opt.verbose>1
     fprintf('osc det displacement %s mm\n',sprintf('%.2f,',opt.osc.amp.*opt.osc.omega*det_time*1e3))
 end
 
-% find the outcoupling time
-% cosh(t omega)*r(0)=rtf
-r_start=0.01; % radius at which the atom starts
-% the time to exit can be given as
-t_out_couple=acosh(r_start)/max(opt.osc.omega); 
-% note that there is always an unstable equlibrium where an atom stays in the condensate
-% in the falling frame this is an atom 'surfing' on the bec potential and accelerating up at g
 
-% find the time after which all the particles are in freefall
-% first we find the maximum velocity upwards by equating the chem potential to the kenetic energy up
-% (1/2)·m·vmax^2=tf_details.mu_chem_pot;
-vmax =sqrt(tf_details.mu_chem_pot*2/tf_details.inputs.mass);
-%time for velocity to go to zero is vmax/g, and to come back to BEC is twice this
-% a simple formula would be
-% tprop_end=2*vmax/g;
-% given y(0)=R_tf find y(t)=-R_tf
-% -2*R_tf =vmax t -(1/2)g t^2 
-% we add on the oscillation amplitude here as well
-tprop_end=( vmax+sqrt((vmax.^2)+4*(1/2)*opt.grav*2*(tf_details.tf_radi(3)+opt.osc.amp(3))) )/opt.grav;
-% and add on a fudge factor
-tprop_end=1.2*tprop_end;
+
+if isfield(opt,'t_end')
+    tprop_end=opt.t_end; 
+else
+    % find the outcoupling time
+    % cosh(t omega)*r(0)=rtf
+    r_start=0.01; % radius at which the atom starts
+    % the time to exit can be given as
+    t_out_couple=acosh(1/r_start)/max(opt.osc.omega); 
+    tprop_end=t_out_couple;
+    if opt.grav>0
+        % note that there is always an unstable equlibrium where an atom stays in the condensate
+        % in the falling frame this is an atom 'surfing' on the bec potential and accelerating up at g
+        % find the time after which all the particles are in freefall
+        % first we find the maximum velocity upwards by equating the chem potential to the kenetic energy up
+        % (1/2)·m·vmax^2=tf_details.mu_chem_pot;
+        vmax =sqrt(tf_details.mu_chem_pot*2/tf_details.inputs.mass);
+        %time for velocity to go to zero is vmax/g, and to come back to BEC is twice this
+        % a simple formula would be
+        % tprop_end=2*vmax/g;
+        % given y(0)=R_tf find y(t)=-R_tf
+        % -2*R_tf =vmax t -(1/2)g t^2 
+        % we add on the oscillation amplitude here as well
+        tprop_end=( vmax+sqrt((vmax.^2)+4*(1/2)*opt.grav*2*(tf_details.tf_radi(3)+opt.osc.amp(3))) )/opt.grav;
+        % and add on a fudge factor
+        tprop_end=1.2*tprop_end;
+    end
+end
+fprintf('simulation t_end=%.2g \n',tprop_end)
 
 [bec_pos,bec_vel]=osc_trap_pos(0,opt.osc);
+
+expanding_bec=false;
+if isfield(opt,'trap_off') && ~isnan(opt.trap_off) && opt.trap_off<tprop_end
+    expanding_bec=true;
+    % find the scaling solution function
+    [~,~,lambda_fun]=tf_expand_scaling_trap_off_num(tf_details.inputs.omega,tprop_end-opt.trap_off);
+    lambda_fun_shifted=@(t) lambda_fun(t-opt.trap_off);
+    fprintf('lambda at end %s \n',sprintf('%.2f,',lambda_fun_shifted(tprop_end)))
+else
+    lambda_fun_shifted=@(t) nan; %hack to get parfor to work
+end
+% for debug
+% plot(inlidx(lambda_fun(linspace(0,0.00001,1e3)),{':',1}))
+
 
 time_sim=tic;
 
 iimax=round(opt.nsamp/chunk_size);
 fprintf('\nrunning simulation\n')
-output_chars=fprintf('chunk %04u of %04u',0,iimax);
 ode_opts = odeset('RelTol',1e-4,...
                     'InitialStep',0.01/max(tf_details.inputs.omega),...
                     'MaxStep',0.1/max(tf_details.inputs.omega),...
@@ -69,20 +91,35 @@ tmp_fin_states=cell(1,iimax);
 tmp_start_states=cell(1,iimax);
 
 % set up the parfor progress bar
+fprintf('\n\n')
 parfor_progress_imp(iimax);
 
 parfor ii=1:iimax
-    data_chunk=sample_pts_from_tf(chunk_size,tf_details);
+    data_chunk=sample_pts_from_tf(chunk_size,tf_details,opt.den_power);
     % we define the state (pos,vel) of all these particles in a matrix
     % dimension = N (particle index) x 3(cart idx) x 2 (pos,vel)
     xstart=nan([size(data_chunk),2]);
     xstart(:,:,1)=data_chunk+repmat(bec_pos',[size(data_chunk,1),1]);
+    % the velcoity will be the velocity of the bec at t=0
     xstart(:,:,2)=repmat(bec_vel',[size(data_chunk,1),1]);
+    % optionally add the QD distribution
+    if isfield(opt,'qd') 
+        xstart(:,:,2)=xstart(:,:,2)+sample_from_k4_dist(chunk_size,opt.qd);
+    end
+    
+    
     xshape=size(xstart);
-
-    xsol=ode45(@(t,x) state_update_fun_grav(x,tf_details,xshape,opt.grav,t,opt.osc),[0,tprop_end],...
+    if expanding_bec
+        xsol=ode45(@(t,x) state_update_fun_grav(x,tf_details,xshape,opt.grav,t,opt.osc,lambda_fun_shifted,opt.trap_off),[0,tprop_end],...
+            reshape(xstart,[],1),...
+            ode_opts);
+    else
+        %state_update_fun_grav(reshape(xstart,[],1),tf_details,xshape,opt.grav,1e-3,opt.osc)
+        xsol=ode45(@(t,x) state_update_fun_grav(x,tf_details,xshape,opt.grav,t,opt.osc),[0,tprop_end],...
         reshape(xstart,[],1),...
-        ode_opts);
+        ode_opts);  
+    end
+    
     
     % lets find the position and velocity at the final time
     if xsol.x(end)==tprop_end %check that it found the final time
@@ -92,13 +129,21 @@ parfor ii=1:iimax
     end
     xfinal=reshape(xfinal,xshape);
     
+    if expanding_bec
+        lambda_end=lambda_fun_shifted(tprop_end);
+    else
+        lambda_end=[1,1,1];
+    end
     %check that no atoms are still in the condensate (or rather a cube approx therof)
-    in_condensate_mask=abs(xfinal(:,:,1))<repmat(tf_details.tf_radi',[size(xfinal,1),1]);
+    lambda_end=repmat(lambda_end,[xshape(1),1]);
+    xend_scaled=xfinal(:,:,1)./lambda_end;
+    in_condensate_mask=abs(xend_scaled)<repmat(tf_details.tf_radi',[size(xfinal,1),1]);
     in_condensate_mask=all(in_condensate_mask,2);
     num_in_condensate=sum(in_condensate_mask);
     if num_in_condensate>0
         fprintf('\n%u atoms still in condensate \n', num_in_condensate)
-        fprintf(repmat(' ',[1,output_chars]))
+        fprintf('\n')
+        fprintf(repmat(' ',[1,50+12+36]))
     end
     
     % we use this temp cell form so that the loop is parfor compatable 
@@ -177,7 +222,7 @@ end
 
 
 
-function dxdt=state_update_fun_grav(xin,tf_param,xshape,grav,t,osc_det)
+function dxdt=state_update_fun_grav(xin,tf_param,xshape,grav,t,osc_det,lambda_fun,t_trap_off)
 % this function returns the temporal derivatives of each of the state parameters in xin
 % velocity and position for each cartesian axes are encoded in a vector
 % for ease of processing the state is unfolded into a matrix
@@ -187,11 +232,35 @@ function dxdt=state_update_fun_grav(xin,tf_param,xshape,grav,t,osc_det)
 xin=reshape(xin,xshape);
 dxdt=0*xin;
 dxdt(:,:,1)=xin(:,:,2);
-condensate_pos=osc_trap_pos(t,osc_det);
-condensate_pos(3)=condensate_pos(3)+(1/2)*grav*(t^2);
-pos_shifted=xin(:,:,1)-repmat(condensate_pos',[size(xin,1),1]);
-[~,pot_grad]=tf_mean_field_pot(pos_shifted,tf_param,1);
-force=-pot_grad;
+
+if nargin>6
+    lambda_this=lambda_fun(t);
+else
+    lambda_this=[1,1,1];
+    t_trap_off=inf;
+end
+lambds_prod=prod(lambda_this);
+lambda_this=repmat(lambda_this,[xshape(1),1]);
+
+if t<t_trap_off
+    condensate_pos=osc_trap_pos(t,osc_det);
+    condensate_pos(3)=condensate_pos(3)+(1/2)*grav*(t^2);
+else
+    % once the trap turns off the condensate will travel balisticaly
+    [condensate_pos,dcondensate_pos]=osc_trap_pos(t_trap_off,osc_det);
+    condensate_pos=condensate_pos+dcondensate_pos.*(t-t_trap_off);
+    % if the trap has turned off
+    condensate_pos(3)=condensate_pos(3)+(1/2)*grav*(t_trap_off^2)...
+        - (1/2)*grav*((t-t_trap_off)^2) ;
+end
+pos_shifted=xin(:,:,1)-repmat(condensate_pos',[xshape(1),1]);
+pos_scaled=pos_shifted./lambda_this;
+[~,pot_grad]=tf_mean_field_pot(pos_scaled,tf_param,1);
+% this scaling is from [Y. Castin and R. Dum, “Bose-Einstein Condensates in Time Dependent Traps,” Physical Review Letters, vol. 77, no. 27, pp. 5315–5319, Dec. 1996](https://doi.org/10.1103/PhysRevLett.77.5315) 
+% the first scaling gives a derivative part of m \omega_j^2 r/\lambda_j
+% now this scaling gives \omega_j^2 r/(\lambda_j^2 \prod(\lambda)) 
+pot_grad_scaled=pot_grad./(lambda_this*lambds_prod);
+force=-pot_grad_scaled;
 %f=ma;
 accel=(force/tf_param.inputs.mass) ;
 accel(:,3)=accel(:,3);
