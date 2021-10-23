@@ -13,6 +13,7 @@ function out_st=class_sim_outcoupling(tf_details,opt)
 %       .nsamp
 %       .verbose
 
+
 %TODO
 % include start points in output structure
 
@@ -20,7 +21,11 @@ if ~isfield(opt,'verbose')
     opt.verbose=0;
 end
 
-chunk_size=100;
+if ~isfield(opt,'den_power')
+    opt.den_power=1;
+end
+
+
 
 
 % (1/2) m v^2= 1/2 m omega^2 x^2
@@ -77,6 +82,13 @@ end
 
 
 time_sim=tic;
+% too low a chunk size will slow things down from more communication
+% overhead, but if you ar doing sims with low numbers it can mean that not
+% all the threads are used
+%myCluster = parcluster('local');
+%num_threads=myCluster.NumWorkers;
+
+chunk_size=1000;
 
 iimax=round(opt.nsamp/chunk_size);
 fprintf('\nrunning simulation\n')

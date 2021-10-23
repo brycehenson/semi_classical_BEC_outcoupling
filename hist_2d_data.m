@@ -1,4 +1,4 @@
-function hist_2d_data(data_in,opts)
+function hist_fig=hist_2d_data(data_in,opts)
 % plot a histogram 'slice' or integeration of xyz data
 % opts.cords_to_plot
 % opts.cords_labels
@@ -52,6 +52,16 @@ end
 if ~isfield(opts,'save_hist_as_image')
     opts.save_hist_as_image=false;
 end
+if ~isfield(opts,'density_power')
+    opts.density_power=[];
+end
+
+if ~isfield(opts,'kernel_factor')
+    opts.kernel_factor=[];
+end
+
+
+    
 
 % check that size of data is right
 if max(cords_to_plot)>size(data_in,1)
@@ -86,7 +96,7 @@ bounds_range_tmp=bounds_range_tmp(cords_to_plot);
 hist_bins(cords_to_plot)=ceil((bounds_range_tmp./blur_size')*opts.bin_factor);
 
 
-stfig('2d hist'); %'add_stack',1
+hist_fig=stfig('2d hist'); %'add_stack',1
 %[[xmin,xmax];[ymin,ymax];[zmin,zmax]]
 
 hist_edges=cell(1,3);
@@ -121,13 +131,22 @@ end
 
 if  any(blur_size~=0)
     kernel_sigma_in_bins=blur_size./lin_bin_size(cords_to_plot);
-    kernel_size=ceil(kernel_sigma_in_bins*5); %size of kernel
+    if isempty(opts.kernel_factor)
+        kernel_factor=5;
+    else 
+        kernel_factor=opts.kernel_factor;
+    end
+    kernel_size=ceil(kernel_sigma_in_bins*kernel_factor); %size of kernel
     blur_kernel=custom_gaussian_function_2d(kernel_size, kernel_sigma_in_bins, [], [], 0, 1);
     counts=imfilter(counts, blur_kernel, 'same');
 end
 
 if opts.norm_den_unity
     counts=counts/max(counts(:));
+end
+
+if ~isempty(opts.density_power)
+    counts=counts.^opts.density_power;
 end
 
 %imagesc seems to plot the wrong way round so we transpose here
@@ -146,11 +165,11 @@ if isfield(opts,'cbar_lims')
 end
 
 if opts.mean_marker
-hold on
-plot(data_mean(cords_to_plot(1))/opts.disp_scale(cords_to_plot(1)),...
-    data_mean(cords_to_plot(2))/opts.disp_scale(cords_to_plot(2)),...
-    'rx','MarkerSize',12,'LineWidth',2)
-hold off
+    hold on
+    plot(data_mean(cords_to_plot(1))/opts.disp_scale(cords_to_plot(1)),...
+        data_mean(cords_to_plot(2))/opts.disp_scale(cords_to_plot(2)),...
+        'rx','MarkerSize',12,'LineWidth',2)
+    hold off
 end
 
 
@@ -217,12 +236,12 @@ if opts.save_hist_as_image
     if ~isfield(opts,'save_hist_name')
         opts.save_hist_name='out_hist.tiff';
     end
-    unit16max=2^16-1;
-    norm_counts=uint16(counts/max(max(counts))*unit16max);
-    norm_counts=transpose(norm_counts);
-    norm_counts=flipud(norm_counts);
-    cmap_unit16=interp_colormap(opts.cmap,linspace(0,1,unit16max));
-    rgbcounts= ind2rgb(norm_counts, cmap_unit16);
+    if ~isfield(opts,'save_hist_range')
+        opts.save_hist_range=[0,max(counts(:))];
+    end
+
+    rgbcounts=array_to_rgb(counts,opts.cmap,opts.save_hist_range);
+    rgbcounts=rot90(rgbcounts);
     imwrite(rgbcounts,opts.save_hist_name)
 end
 

@@ -6,6 +6,12 @@ set_up_project_path
 
 hebec_constants
 rng('shuffle')
+
+%%
+num_local=change_num_workers_local(5)
+
+%parpool('local',num_local)
+
 %%
 
 %define exp parameters
@@ -17,7 +23,7 @@ param.a_scat_len=const.ahe_scat;
 
 tf_details=bec_properties(param.trap_freq/(2*pi),param.num,param.mass,param.a_scat_len)
 %% use rejection sampling to sample from a 3d TF
-n_sample=3e6;
+n_sample=1e5;
 tic 
 pos_sample=sample_pts_from_tf(n_sample,tf_details);
 toc
@@ -34,19 +40,19 @@ ylabel('count rate ($\mathrm{m}^{-1}$)')
 xlabel('x pos (m)')
 
 %%
-opts=[];
-opts.cords_to_plot=[2,3];
-opts.cords_labels={'x','y','z'};
-opts.cords_units={'m','m','m'};
-opts.disp_scale=[1,1,1]*1e-6;
-opts.blur_size=[1,1,1]*0.02;
-opts.std_norm_bounds=true;
-opts.hist_bounds=[5,1,1]*3;
+hist_opt=[];
+hist_opt.cords_to_plot=[2,3];
+hist_opt.cords_labels={'x','y','z'};
+hist_opt.cords_units={'m','m','m'};
+hist_opt.disp_scale=[1,1,1]*1e-6;
+hist_opt.blur_size=[1,1,1]*0.02;
+hist_opt.std_norm_bounds=true;
+hist_opt.hist_bounds=[5,1,1]*3;
 % optional
-opts.filter_in_other_axis=true;
+hist_opt.filter_in_other_axis=true;
 % opts.bin_factor;
 
-hist_2d_data(pos_sample,opts)
+hist_2d_data(pos_sample,hist_opt)
 
 %% do a calssical sim of the outcoupled atoms
 sim_opt=[];
@@ -55,40 +61,42 @@ sim_opt.osc.omega =tf_details.inputs.omega;
 %lets define the amplitude in velocity then convert to spatial
 sim_opt.osc.amp=col_vec([0,0,0]); 
 sim_opt.osc.phase=col_vec([0,0,0]);
-sim_opt.nsamp=10e6;
+sim_opt.osc.decay_tau=5/500;
+sim_opt.osc.time_offset=0;
+sim_opt.nsamp=1e5;
 sim_opt.grav=const.g0;
 sim_out=class_sim_outcoupling(tf_details,sim_opt);
 %
 
 %% plots
-opts=[];
-opts.cords_to_plot=[2,3];
-opts.cords_labels={'x','y','z'};
-opts.cords_units=repmat({'m $\mathrm{s}^{-1}$'},[1,3]);
-opts.mean_marker=true;
-opts.disp_scale=[1,1,1]*1e-3;
-opts.blur_size=[1,1,1]*0.08e-3;
+hist_opt=[];
+hist_opt.cords_to_plot=[2,3];
+hist_opt.cords_labels={'x','y','z'};
+hist_opt.cords_units=repmat({'m $\mathrm{s}^{-1}$'},[1,3]);
+hist_opt.mean_marker=true;
+hist_opt.disp_scale=[1,1,1]*1e-3;
+hist_opt.blur_size=[1,1,1]*0.08e-3;
 % opts.std_norm_bounds=true;
 % opts.hist_bounds=[5,1,1]*3;
-opts.std_norm_bounds=false;
-opts.cmap=nonlinear_colormap(viridis,'power',[0.45,1,0]);
-opts.hist_bounds=[[-50,50];[-55,55];[-50,100]]*1e-3;
+hist_opt.std_norm_bounds=false;
+hist_opt.cmap=nonlinear_colormap(viridis,'power',[0.45,1,0]);
+hist_opt.hist_bounds=[[-50,50];[-55,55];[-50,100]]*1e-3;
 % optional
-opts.filter_in_other_axis=false;
-opts.norm_den_to_num_in=true;
-opts.scale_den_disp_fac=true;
-opts.norm_den_unity=true;
-opts.save_hist_as_image=true;
-opts.save_hist_name='many_counts.tiff';
+hist_opt.filter_in_other_axis=false;
+hist_opt.norm_den_to_num_in=true;
+hist_opt.scale_den_disp_fac=true;
+hist_opt.norm_den_unity=true;
+hist_opt.save_hist_as_image=true;
+hist_opt.save_hist_name='many_counts.tiff';
 
 %opts.cbar_lims=[0,2e-3];
 % opts.bin_factor;
 
-hist_2d_data(sim_out.final.vel.vals,opts)
+hist_2d_data(sim_out.final.vel.vals,hist_opt)
 
 hold on
-plot(sim_out.bec.vel(opts.cords_to_plot(1))/opts.disp_scale(opts.cords_to_plot(1)),...
-    sim_out.bec.vel(opts.cords_to_plot(2))/opts.disp_scale(opts.cords_to_plot(1)),...
+plot(sim_out.bec.vel(hist_opt.cords_to_plot(1))/hist_opt.disp_scale(hist_opt.cords_to_plot(1)),...
+    sim_out.bec.vel(hist_opt.cords_to_plot(2))/hist_opt.disp_scale(hist_opt.cords_to_plot(1)),...
     'wo','MarkerSize',10,'LineWidth',1.0)
 hold off
 
@@ -121,62 +129,69 @@ do_plot=false;
 sim_opt=[];
 sim_opt.osc.omega =tf_details.inputs.omega;
 %lets define the amplitude in velocity then convert to spatial
-osc_amp_vel=col_vec([0,1,1]*10e-3); 
+osc_amp_vel=col_vec([0,1,1]*1.4*10e-3); 
 sim_opt.osc.amp=col_vec(osc_amp_vel./sim_opt.osc.omega); 
+sim_opt.osc.decay_tau=5/500;
+sim_opt.osc.phase=col_vec([0,0,(1/2)])*pi;
+sim_opt.grav=const.g0;
+
 sim_opt.grav=const.g0;
 sim_opt.nsamp=1e3;%number of atoms to simulate
-data_in=pos_sample;
 
-phases=linspace(0,2,2^12)*pi; %2^7
-phases=phases(1:end-1); % remove the 2 pi pt because its equal to the start
-jjmax=numel(phases);
+
+times=linspace(0,5,500).*(2*pi/sim_opt.osc.omega(2));
+jjmax=numel(times);
+
 vel_compare=[];
-vel_compare.bec=nan(jjmax,3);
-vel_compare.pal=nan(jjmax,3);
-vel_compare.phase=phases;
+vel_compare.bec.mean=nan(jjmax,3);
+vel_compare.pal.mean=nan(jjmax,3);
+vel_compare.pal.std=nan(jjmax,3);
+vel_compare.pal.ste=nan(jjmax,3);
+vel_compare.time=times;
 
 
 %sim_opt.verbose=3;
-sim_outs=cell(1,jjmax);
+%sim_outs=cell(1,jjmax);
 
 for jj=1:jjmax
-fprintf('\n phase %u of %u \n',jj,jjmax) 
-    
-sim_opt.osc.phase=col_vec([0,0,(1/2)])*pi+ phases(jj);
+fprintf('\n time %u of %u \n',jj,jjmax) 
 
+sim_opt.osc.time_offset=times(jj);
 sim_out=class_sim_outcoupling(tf_details,sim_opt);
-
-sim_outs{jj}=sim_out;
+%sim_outs{jj}=sim_out;
  
-vel_compare.bec(jj,:)=sim_out.bec.vel;
-vel_compare.pal(jj,:)=sim_out.final.vel.mean;
+vel_compare.bec.mean(jj,:)=row_vec(sim_out.bec.vel);
+vel_compare.pal.mean(jj,:)=sim_out.final.vel.mean;
+vel_compare.pal.std(jj,:)=sim_out.final.vel.std;
+vel_compare.pal.ste(jj,:)=sim_out.final.vel.std/...
+                            sqrt(size(sim_out.final.vel.vals,1));
 
 if do_plot
     % plots
-    opts=[];
-    opts.cords_to_plot=[2,3];
-    opts.cords_labels={'x','y','z'};
-    opts.cords_units=repmat({'m $\mathrm{s}^{-1}$'},[1,3]);
-    opts.mean_marker=true;
-    opts.disp_scale=[1,1,1]*1e-3;
-    opts.blur_size=[1,1,1]*0.2e-3;
+    hist_opt=[];
+    hist_opt.cords_to_plot=[2,3];
+    hist_opt.cords_labels={'x','y','z'};
+    hist_opt.cords_units=repmat({'m $\mathrm{s}^{-1}$'},[1,3]);
+    hist_opt.mean_marker=true;
+    hist_opt.disp_scale=[1,1,1]*1e-3;
+    hist_opt.blur_size=[1,1,1]*0.2e-3;
     % opts.std_norm_bounds=true;
     % opts.hist_bounds=[5,1,1]*3;
-    opts.std_norm_bounds=false;
-    opts.cmap=nonlinear_colormap(viridis,'power',[0.45,1,0]);
-    opts.hist_bounds=[[-50,50];[-55,55];[-50,100]]*1e-3;
+    hist_opt.std_norm_bounds=false;
+    hist_opt.cmap=nonlinear_colormap(viridis,'power',[0.45,1,0]);
+    hist_opt.hist_bounds=[[-50,50];[-55,55];[-50,100]]*1e-3;
     % optional
-    opts.filter_in_other_axis=false;
-    opts.norm_den_to_num_in=true;
-    opts.scale_den_disp_fac=true;
+    hist_opt.filter_in_other_axis=false;
+    hist_opt.norm_den_to_num_in=true;
+    hist_opt.scale_den_disp_fac=true;
     %opts.cbar_lims=[0,2e-3];
     % opts.bin_factor;
 
-    hist_2d_data(sim_out.final.vel.vals,opts)
+    hist_2d_data(sim_out.final.vel.vals,hist_opt)
 
     hold on
-    plot(sim_out.bec.vel(opts.cords_to_plot(1))/opts.disp_scale(opts.cords_to_plot(1)),...
-        sim_out.bec.vel(opts.cords_to_plot(2))/opts.disp_scale(opts.cords_to_plot(1)),...
+    plot(sim_out.bec.vel(hist_opt.cords_to_plot(1))/hist_opt.disp_scale(hist_opt.cords_to_plot(1)),...
+        sim_out.bec.vel(hist_opt.cords_to_plot(2))/hist_opt.disp_scale(hist_opt.cords_to_plot(1)),...
         'wo','MarkerSize',10,'LineWidth',1.0)
     hold off
     pause(1e-6)
@@ -235,12 +250,12 @@ xlim([0,5.2])
 ylim([1e-4,15])
 
 %%
-opts=[];
-opts.cords_to_plot=[2,3];
-opts.cords_labels={'x','y','z'};
-opts.blur_size=[1,1,1]*1e3;
+hist_opt=[];
+hist_opt.cords_to_plot=[2,3];
+hist_opt.cords_labels={'x','y','z'};
+hist_opt.blur_size=[1,1,1]*1e3;
 %outcoupled.vel
-hist_spatial_data(outcoupled.pos,opts)
+hist_spatial_data(outcoupled.pos,hist_opt)
 
 
 
