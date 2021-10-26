@@ -8,138 +8,41 @@ hebec_constants
 rng('shuffle')
 
 %%
-num_local=change_num_workers_local(5)
+num_local=change_num_workers_local()
 
-%parpool('local',num_local)
-
-%%
-
-%define exp parameters
-param=[];
-param.trap_freq=2*pi*[50,500,500];
-param.num=6e5;
-param.mass=const.mhe;
-param.a_scat_len=const.ahe_scat;
-
-tf_details=bec_properties(param.trap_freq/(2*pi),param.num,param.mass,param.a_scat_len)
-%% use rejection sampling to sample from a 3d TF
-n_sample=1e5;
-tic 
-pos_sample=sample_pts_from_tf(n_sample,tf_details);
-toc
-
+parpool('local',num_local)
 
 %%
-slice_size=0.1;
-selection_mask=abs(pos_sample(:,2))<slice_size*tf_details.tf_radi(2) & abs(pos_sample(:,3))<slice_size*tf_details.tf_radi(3) ;
-out_struct=smooth_hist(pos_sample(selection_mask,1),'lims',[-1,1]*tf_details.tf_radi(1),'sigma',tf_details.tf_radi(1)*1e-2,'bin_factor',10);
-stfig('count_rate','add_stack',1); %this time we will give the figure a name and prepend the function that called it
-clf
-plot(out_struct.bin.centers,out_struct.count_rate.smooth*1e-3)
-ylabel('count rate ($\mathrm{m}^{-1}$)')
-xlabel('x pos (m)')
-
-%%
-hist_opt=[];
-hist_opt.cords_to_plot=[2,3];
-hist_opt.cords_labels={'x','y','z'};
-hist_opt.cords_units={'m','m','m'};
-hist_opt.disp_scale=[1,1,1]*1e-6;
-hist_opt.blur_size=[1,1,1]*0.02;
-hist_opt.std_norm_bounds=true;
-hist_opt.hist_bounds=[5,1,1]*3;
-% optional
-hist_opt.filter_in_other_axis=true;
-% opts.bin_factor;
-
-hist_2d_data(pos_sample,hist_opt)
-
-%% do a calssical sim of the outcoupled atoms
-sim_opt=[];
-% lets use a stationary BEC
-sim_opt.osc.omega =tf_details.inputs.omega;
-%lets define the amplitude in velocity then convert to spatial
-sim_opt.osc.amp=col_vec([0,0,0]); 
-sim_opt.osc.phase=col_vec([0,0,0]);
-sim_opt.osc.decay_tau=5/500;
-sim_opt.osc.time_offset=0;
-sim_opt.nsamp=1e5;
-sim_opt.grav=const.g0;
-sim_out=class_sim_outcoupling(tf_details,sim_opt);
-%
-
-%% plots
-hist_opt=[];
-hist_opt.cords_to_plot=[2,3];
-hist_opt.cords_labels={'x','y','z'};
-hist_opt.cords_units=repmat({'m $\mathrm{s}^{-1}$'},[1,3]);
-hist_opt.mean_marker=true;
-hist_opt.disp_scale=[1,1,1]*1e-3;
-hist_opt.blur_size=[1,1,1]*0.08e-3;
-% opts.std_norm_bounds=true;
-% opts.hist_bounds=[5,1,1]*3;
-hist_opt.std_norm_bounds=false;
-hist_opt.cmap=nonlinear_colormap(viridis,'power',[0.45,1,0]);
-hist_opt.hist_bounds=[[-50,50];[-55,55];[-50,100]]*1e-3;
-% optional
-hist_opt.filter_in_other_axis=false;
-hist_opt.norm_den_to_num_in=true;
-hist_opt.scale_den_disp_fac=true;
-hist_opt.norm_den_unity=true;
-hist_opt.save_hist_as_image=true;
-hist_opt.save_hist_name='many_counts.tiff';
-
-%opts.cbar_lims=[0,2e-3];
-% opts.bin_factor;
-
-hist_2d_data(sim_out.final.vel.vals,hist_opt)
-
-hold on
-plot(sim_out.bec.vel(hist_opt.cords_to_plot(1))/hist_opt.disp_scale(hist_opt.cords_to_plot(1)),...
-    sim_out.bec.vel(hist_opt.cords_to_plot(2))/hist_opt.disp_scale(hist_opt.cords_to_plot(1)),...
-    'wo','MarkerSize',10,'LineWidth',1.0)
-hold off
-
-% comapre the mean postion in velocity space to the bec
-% this tells us how much the BEC gets pushed arround from the outcoupling process
-% 70(7)e-6 ms⁻¹ is what i got in a 1e7 count sim
-% the impulse on the bec is therefore 70e-6*nout*mass
-% the change in velocity of the bec is therefor 70e-6*nout*mass=m*deltav*nin
-% 70e-6 ms⁻¹*nout/nin=deltav
-% 70e-6  ms⁻¹*(N_0*eta)/(N_0*(1-eta))=deltav
-% for small outcoupling we aproximate this as 
-% 70e-6  ms⁻¹*eta=deltav
-% for a eta=1e-2
-% \delta v=0.7 µs⁻¹
 
 
-str_vals={};
-disp_fac=1e6;
-for ii=1:3
-    str_vals{ii}=string_value_with_unc(sim_out.final.vel.mean(ii)*disp_fac,...
-        disp_fac*sim_out.final.vel.std(ii)/sqrt(size(sim_out.final.vel.vals,1)),'type','b');
-end
-fprintf('mean vel (x,y,z)= ( %s, %s, %s ) µms⁻¹ \n',str_vals{:})
-%set(gcf,'Position',[100 100 1000 1000])
 
-return
+
 %% lets study what happens when there is an oscillation of the condensate
 % we will usea a 10mm/s oscillation because thats about what the tune out used
+
+%define exp parameters
+tf_param=[];
+tf_param.trap_freq=2*pi*[55,426,428];
+tf_param.mass=const.mhe;
+tf_param.a_scat_len=const.ahe_scat;
+% lets define a time varying atom number
+tf_num_tume_fun=@(t) 6e5-(5e5/1.2)*t;
+
 do_plot=false;
 sim_opt=[];
 sim_opt.osc.omega =tf_details.inputs.omega;
 %lets define the amplitude in velocity then convert to spatial
-osc_amp_vel=col_vec([0,1,1]*1.4*10e-3); 
+osc_amp_vel=col_vec([0,1,0]*12e-3); 
 sim_opt.osc.amp=col_vec(osc_amp_vel./sim_opt.osc.omega); 
-sim_opt.osc.decay_tau=5/500;
-sim_opt.osc.phase=col_vec([0,0,(1/2)])*pi;
+sim_opt.osc.lambda=1/0.7;%5/500;
+sim_opt.osc.phase=col_vec([0,0,(1/4)])*pi;
 sim_opt.grav=const.g0;
-
 sim_opt.grav=const.g0;
-sim_opt.nsamp=1e3;%number of atoms to simulate
+sim_opt.nsamp=3.2e3*0.1;%number of atoms to simulate
 
 
-times=linspace(0,5,500).*(2*pi/sim_opt.osc.omega(2));
+%times=linspace(0,50,156).*(2*pi/sim_opt.osc.omega(2));
+times=(0:(156-1))*8e-3; %156
 jjmax=numel(times);
 
 vel_compare=[];
@@ -156,6 +59,8 @@ vel_compare.time=times;
 for jj=1:jjmax
 fprintf('\n time %u of %u \n',jj,jjmax) 
 
+tf_param.num=tf_num_tume_fun(times(jj));
+tf_details=bec_properties(tf_param.trap_freq/(2*pi),tf_param.num,tf_param.mass,tf_param.a_scat_len);
 sim_opt.osc.time_offset=times(jj);
 sim_out=class_sim_outcoupling(tf_details,sim_opt);
 %sim_outs{jj}=sim_out;
@@ -165,6 +70,10 @@ vel_compare.pal.mean(jj,:)=sim_out.final.vel.mean;
 vel_compare.pal.std(jj,:)=sim_out.final.vel.std;
 vel_compare.pal.ste(jj,:)=sim_out.final.vel.std/...
                             sqrt(size(sim_out.final.vel.vals,1));
+
+% lets fit the motion that was simulated
+
+
 
 if do_plot
     % plots
@@ -205,15 +114,60 @@ end
 
 %%
 stfig('pal as momentum sampler')
+y_labels_val={'V x (mm/s)','V y  (mm/s)','V z  (mm/s)'}
+y_labels_diff={'$\Delta$ V x (mm/s)','$\Delta$ V y  (mm/s)','$\Delta$ V z  (mm/s)'}
+font_size=15
+y_factor=1e3
 for ii=1:3
-subplot(3,2,2*(ii-1)+1)
-plot(vel_compare.phase,vel_compare.bec(:,ii))
-hold on
-plot(vel_compare.phase,vel_compare.pal(:,ii))
-hold off
-subplot(3,2,2*(ii-1)+2)
-plot(vel_compare.phase,vel_compare.bec(:,ii)-vel_compare.pal(:,ii))
+    subplot(3,2,2*(ii-1)+1)
+    plot(vel_compare.time,vel_compare.bec.mean(:,ii)*y_factor,'k')
+    ylabel(y_labels_val{ii},"FontSize",font_size)
+    xlabel('Time (s)',"FontSize",font_size)
+    hold on
+    plot(vel_compare.time,vel_compare.pal.mean(:,ii)*y_factor)
+    hold off
+    legend('a','b')
+    subplot(3,2,2*(ii-1)+2)
+    plot(vel_compare.time,(vel_compare.bec.mean(:,ii)-vel_compare.pal.mean(:,ii)) *y_factor )
+    ylabel(y_labels_diff{ii},"FontSize",font_size)
+    xlabel('Time (s)',"FontSize",font_size)
 end
+ax=gca
+
+%%
+tf_param=[];
+tf_param.trap_freq=2*pi*[55,426,428];
+tf_param.mass=const.mhe;
+tf_param.a_scat_len=const.ahe_scat;
+tf_param.num=4e5;
+
+tf_details=bec_properties(tf_param.trap_freq/(2*pi),tf_param.num,tf_param.mass,tf_param.a_scat_len);
+
+unc_est_st=[];
+unc_est_st.pal_num_per_pulse=3.2e3*0.1;
+unc_est_st.num_pulses=156;
+unc_est_st.osc_amp=12e-3;
+unc_est_st.time=156*8e-3;
+unc_est_st.damp_rate=1/0.7;
+out=unc_est_in_pal_meas(tf_details,unc_est_st)
+
+
+%%
+ii=2
+data_in=[];
+data_in.x=vel_compare.pal.mean(:,ii);
+data_in.t=vel_compare.time;
+data_in.unc_x=vel_compare.pal.ste(:,ii)
+opts_in=[];
+fit_pal=fit_sine_to_data(data_in,opts_in)
+
+%%
+
+data_in=[];
+data_in.x=vel_compare.bec.mean(:,ii);
+data_in.t=vel_compare.time;
+opts_in=[];
+fit_bec=fit_sine_to_data(data_in,opts_in)
 
 
 %% look for harnomics

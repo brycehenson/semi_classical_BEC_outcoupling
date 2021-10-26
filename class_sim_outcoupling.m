@@ -82,13 +82,15 @@ end
 
 
 time_sim=tic;
+
+% adaptive chunk size
 % too low a chunk size will slow things down from more communication
 % overhead, but if you ar doing sims with low numbers it can mean that not
 % all the threads are used
-%myCluster = parcluster('local');
-%num_threads=myCluster.NumWorkers;
-
-chunk_size=1000;
+min_chunk_size=100;
+max_chunk_size=10000;
+chunk_size=bound(round(opt.nsamp/get_num_workers()),min_chunk_size,max_chunk_size);
+%chunk_size=100;
 
 iimax=round(opt.nsamp/chunk_size);
 fprintf('\nrunning simulation\n')
