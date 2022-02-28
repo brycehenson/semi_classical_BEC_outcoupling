@@ -22,8 +22,8 @@ function unc_est=unc_est_in_pal_meas(tf_details,samp_param)
     in_st.amp=osc_amp; % amplitude of the sine wave
     in_st.samp_num=num_pulses; % number of samples
     in_st.samp_time=time; %duration over which the oscillation was sampled
-    in_st.damp_rate=lambda;
-    
+    in_st.damp_rate=lambda
+
     unc_est=analy_err_in_fit_sine(in_st);
    
 

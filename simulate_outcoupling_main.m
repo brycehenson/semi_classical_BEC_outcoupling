@@ -8,7 +8,7 @@ hebec_constants
 rng('shuffle')
 
 %%
-num_local=change_num_workers_local(5)
+num_local=change_num_workers_local(15)
 
 %parpool('local',num_local)
 

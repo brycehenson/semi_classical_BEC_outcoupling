@@ -89,8 +89,10 @@ weights(isnan(weights))=1e-20; %if nan then set to smallest value you can
 weights=weights/sum(weights);
 %
 response=data.x;
-
-    modelfun = @(b,x) b(1).*exp(-x.*b(2)).*sin(b(3)*x*pi*2+b(4)*pi*2)+b(5)+b(6)*x;
+    % the model is a standard dampened sine wave
+    % add a max function to the damping rate so that if the fit model sets it
+    % to a rediculous -ve number then we dont get an inf
+    modelfun = @(b,x) b(1).*exp(-x.*max(-5e2,b(2))).*sin(b(3)*x*pi*2+b(4)*pi*2)+b(5)+b(6)*x;
 
 
 if  (isfield(opts,'global_fit')) && opts.global_fit.enable

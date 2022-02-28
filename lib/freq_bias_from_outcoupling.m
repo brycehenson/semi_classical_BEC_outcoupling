@@ -17,7 +17,7 @@ parpool('local',num_local)
 
 
 
-%% lets study what happens when there is an oscillation of the condensate
+%% Look for bias in the measured frequency from the outcoupling process
 % we will usea a 10mm/s oscillation because thats about what the tune out used
 
 %define exp parameters
@@ -135,24 +135,6 @@ end
 ax=gca
 
 %%
-tf_param=[];
-tf_param.trap_freq=2*pi*[55,426,428];
-tf_param.mass=const.mhe;
-tf_param.a_scat_len=const.ahe_scat;
-tf_param.num=4e5;
-
-tf_details=bec_properties(tf_param.trap_freq/(2*pi),tf_param.num,tf_param.mass,tf_param.a_scat_len);
-
-unc_est_st=[];
-unc_est_st.pal_num_per_pulse=3.2e3*0.1;
-unc_est_st.num_pulses=156;
-unc_est_st.osc_amp=12e-3;
-unc_est_st.time=156*8e-3;
-unc_est_st.damp_rate=1/0.7;
-out=unc_est_in_pal_meas(tf_details,unc_est_st)
-
-
-%%
 ii=2
 data_in=[];
 data_in.x=vel_compare.pal.mean(:,ii);
@@ -168,6 +150,28 @@ data_in.x=vel_compare.bec.mean(:,ii);
 data_in.t=vel_compare.time;
 opts_in=[];
 fit_bec=fit_sine_to_data(data_in,opts_in)
+
+
+
+
+%%
+tf_param=[];
+tf_param.trap_freq=2*pi*[55,426,428];
+tf_param.mass=const.mhe;
+tf_param.a_scat_len=const.ahe_scat;
+tf_param.num=6e5;
+
+tf_details=bec_properties(tf_param.trap_freq/(2*pi),tf_param.num,tf_param.mass,tf_param.a_scat_len);
+
+unc_est_st=[];
+unc_est_st.pal_num_per_pulse=((6e5-2e5)/156)*0.1;
+unc_est_st.num_pulses=156;
+unc_est_st.osc_amp=10e-3;
+unc_est_st.time=156*8e-3;
+unc_est_st.damp_rate=0.35;
+out=unc_est_in_pal_meas(tf_details,unc_est_st)
+
+
 
 
 %% look for harnomics

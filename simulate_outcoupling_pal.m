@@ -116,6 +116,15 @@ fprintf('mean vel (x,y,z)= ( %s, %s, %s ) µms⁻¹ \n',str_vals{:})
 
 return
 %% lets study what happens when there is an oscillation of the condensate
+
+% define the BEC parameters
+tf_param=[];
+tf_param.trap_freq=2*pi*[55,411,415]; 
+tf_param.mass=const.mhe;
+tf_param.a_scat_len=const.ahe_scat;
+tf_param.num=3e5;
+tf_details=bec_properties(tf_param.trap_freq/(2*pi),tf_param.num,tf_param.mass,tf_param.a_scat_len);
+
 % we will usea a 10mm/s oscillation because thats about what the tune out used
 do_plot=false;
 sim_opt=[];
@@ -124,10 +133,10 @@ sim_opt.osc.omega =tf_details.inputs.omega;
 osc_amp_vel=col_vec([0,1,1]*10e-3); 
 sim_opt.osc.amp=col_vec(osc_amp_vel./sim_opt.osc.omega); 
 sim_opt.grav=const.g0;
-sim_opt.nsamp=1e3;%number of atoms to simulate
-data_in=pos_sample;
+sim_opt.nsamp=1e5;%number of atoms to simulate
 
-phases=linspace(0,2,2^12)*pi; %2^7
+
+phases=linspace(0,2,100)*pi; %2^7
 phases=phases(1:end-1); % remove the 2 pi pt because its equal to the start
 jjmax=numel(phases);
 vel_compare=[];
@@ -196,8 +205,10 @@ plot(vel_compare.phase,vel_compare.bec(:,ii))
 hold on
 plot(vel_compare.phase,vel_compare.pal(:,ii))
 hold off
+title( num2str(ii))
 subplot(3,2,2*(ii-1)+2)
 plot(vel_compare.phase,vel_compare.bec(:,ii)-vel_compare.pal(:,ii))
+title( num2str(ii))
 end
 
 
